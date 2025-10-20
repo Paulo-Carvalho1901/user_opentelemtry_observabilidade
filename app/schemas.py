@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 class PessoaSchemaIn(BaseModel):
-    nome = str
+    nome: str
 
 
 class PessoaSchemaOut(BaseModel):
