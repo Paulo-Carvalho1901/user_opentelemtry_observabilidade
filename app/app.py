@@ -5,7 +5,7 @@ from opentelemetry.trace import get_tracer
 from dotenv import load_dotenv 
 import os
 
-from database import init_db, drop_db
+from .database import init_db, drop_db
 from .routes import pessoa_routes
 
 # Carregando as variavel de ambiente
@@ -37,4 +37,4 @@ app.include_router(pessoa_routes.router)
 # Comando para iniciar
 # docker compose up -d
 # opentelemetry-bootstrap -a install
-# opentelemetry-instrument uvicorn app.app:app --reload --port 8000
+# opentelemetry-instrument venv\Scripts\uvicorn.exe app.app:app --reload --port 8000
