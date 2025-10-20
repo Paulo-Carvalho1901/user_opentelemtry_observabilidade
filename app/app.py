@@ -93,6 +93,13 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="App Observability", lifespan=lifespan)
 
 # ===============================================================
+# 🔧 Métricas Prometheus + OpenTelemetry
+# ===============================================================
+from .telemetry import setup_telemetry
+setup_telemetry(app)
+
+
+# ===============================================================
 # 9️⃣ Instrumentação OpenTelemetry
 # ===============================================================
 LoggingInstrumentor().instrument(set_logging_format=True)
