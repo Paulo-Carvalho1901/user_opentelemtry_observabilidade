@@ -1,34 +1,28 @@
-"""
-app/routes/pessoa_routes.py
-Define endpoints para Pessoa.
-- Usa dependency get_db para obter sessão DB
-- Usa crud para manipulação de dados
-- Cria spans manuais via tracer para demonstrar traces
-"""
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from opentelemetry.trace import get_tracer
-from .. import schemas, crud
+from .. import crud, schemas
 from ..database import get_db
+from opentelemetry.trace import get_tracer
+import logging
 
-router = APIRouter()
-tracer = get_tracer("app")
-
-@router.get("/check")
-def check():
-    """Endpoint de saúde simples."""
-    return {"status": "ok"}
+router = APIRouter(prefix="/pessoas", tags=["Pessoas"])
+tracer = get_tracer("pessoas")
+logger = logging.getLogger("pessoas")
 
 @router.post("/create", response_model=schemas.PessoaSchemaOut)
-def create(pessoa: schemas.PessoaSchemaIn, db: Session = Depends(get_db)):
+def create_user(pessoa: schemas.PessoaSchemaIn, db: Session = Depends(get_db)):
     """
-    Cria uma nova pessoa no banco de dados.
-    
-    Observabilidade:
-    - Cria um span "create_pessoa" para registrar a operação no OpenTelemetry.
-    - Gera logs automáticos do SQLAlchemy e FastAPI instrumentados.
+    Cria um novo usuário com nome, email, senha, ativo e cidade.
     """
-    # Inicia um span manual para rastrear esta operação no Grafana/Tempo
-    with tracer.start_as_current_span(f"create_pessoa_{pessoa.nome}"):
+    with tracer.start_as_current_span("create_user"):
+        logger.info(f"Criando usuário: {pessoa.nome} ({pessoa.email})")
         return crud.create_user(db, pessoa)
+
+@router.get("/all", response_model=list[schemas.PessoaSchemaOut])
+def list_users(db: Session = Depends(get_db)):
+    """
+    Lista todos os usuários.
+    """
+    with tracer.start_as_current_span("list_users"):
+        logger.info("Listando usuários cadastrados")
+        return crud.get_all_users(db)
