@@ -115,3 +115,24 @@ def test_trace():
     with tracer.start_as_current_span("manual-test-span"):
         logger.info("📡 Teste de log OTEL - manual-test-span")
         return {"status": "trace ok"}
+
+# Star da aplicação python -m app.app
+# ===============================================================
+# 1️⃣2️⃣ Execução direta (opcional) 
+# ===============================================================
+if __name__ == "__main__":
+    import uvicorn
+
+    # --- Reaplica instrumentação caso rode direto ---
+    # (Garantindo que logs, FastAPI e SQLAlchemy ainda geram spans)
+    LoggingInstrumentor().instrument(set_logging_format=True)
+    FastAPIInstrumentor.instrument_app(app)
+    SQLAlchemyInstrumentor().instrument(engine=engine)
+
+    uvicorn.run(
+        "app.app:app",  # caminho do módulo e nome do objeto FastAPI
+        host="0.0.0.0",
+        port=8000,
+        reload=True,   # hot reload em desenvolvimento
+        log_level="info"
+    )
