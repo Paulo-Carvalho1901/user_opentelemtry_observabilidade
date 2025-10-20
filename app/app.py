@@ -2,10 +2,16 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from opentelemetry.trace import get_tracer
+from dotenv import load_dotenv 
+import os
 
 from database import init_db, drop_db
 from .routes import pessoa_routes
 
+# Carregando as variavel de ambiente
+load_dotenv() # isso lê o arquivo .env automaticamente
+# Agora OTEL_* já estão disponíveis em os.environ
+# Exemplo: print(os.getenv("OTEL_SERVICE_NAME"))
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -26,3 +32,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title='App Observability', lifespan=lifespan)
 
 app.include_router(pessoa_routes.router)
+
+
+# Comando para iniciar
+# docker compose up -d
+# opentelemetry-bootstrap -a install
+# opentelemetry-instrument uvicorn app.app:app --reload --port 8000
