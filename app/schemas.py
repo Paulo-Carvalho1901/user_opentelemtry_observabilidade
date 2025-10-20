@@ -4,7 +4,7 @@ Schemas Pydantic (validação/serialização).
 Compatível com Pydantic v2: use anotações (nome: str).
 """
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
 
 class PessoaSchemaIn(BaseModel):
@@ -21,6 +21,7 @@ class PessoaSchemaOut(BaseModel):
     cidade: Optional[str]
     activo: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes=True  # necessário para saída ORM -> Pydantic
+    )
     # model_config = {"from_attributes": True}
