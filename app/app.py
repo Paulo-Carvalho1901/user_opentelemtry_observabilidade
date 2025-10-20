@@ -1,51 +1,117 @@
+"""
+app/app.py
+Arquivo principal da aplicação FastAPI.
+
+Funções:
+- Carrega .env
+- Inicializa FastAPI com lifespan (cria/destroi tabelas)
+- Aplica instrumentação OpenTelemetry (logging, FastAPI, SQLAlchemy)
+- Inclui rotas do módulo pessoa_routes
+"""
+
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from dotenv import load_dotenv
+
+# ===============================================================
+# 1️⃣ Carrega variáveis de ambiente (.env)
+# ===============================================================
+# Deve ser executado ANTES de inicializar o OpenTelemetry
+load_dotenv(dotenv_path="./.env")
+
+# ===============================================================
+# 2️⃣ Configura o TracerProvider explicitamente
+# ===============================================================
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+# Define o service.name (do .env) ou usa 'app' como padrão
+resource = Resource.create({
+    "service.name": os.getenv("OTEL_SERVICE_NAME", "app"),
+    "service.namespace": "observability_demo",
+    "service.instance.id": os.getenv("HOSTNAME", "local"),
+})
+
+# Configura o provider e exportador OTLP
+trace_provider = TracerProvider(resource=resource)
+trace_exporter = OTLPSpanExporter(
+    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "grpc://host.docker.internal:4317"),
+    insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
+)
+trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+trace.set_tracer_provider(trace_provider)
+
+# ===============================================================
+# 3️⃣ Importa instrumentações do OpenTelemetry
+# ===============================================================
 from opentelemetry.trace import get_tracer
-from dotenv import load_dotenv 
-import os
-
-from .database import init_db, drop_db
-from .routes import pessoa_routes
-
-# Carregando as variavel de ambiente
-load_dotenv() # isso lê o arquivo .env automaticamente
-# Agora OTEL_* já estão disponíveis em os.environ
-# Exemplo: print(os.getenv("OTEL_SERVICE_NAME"))
-
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from .database import engine
 
+# ===============================================================
+# 4️⃣ Imports locais (somente após dotenv)
+# ===============================================================
+from .database import init_db, drop_db, engine
+from .routes import pessoa_routes  # certifique-se que o arquivo é pessoa_routes.py
 
-logger = logging.getLogger('app')
+# ===============================================================
+# 5️⃣ Configuração de logs padrão
+# ===============================================================
+logger = logging.getLogger("app")
 logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler())
 
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
 
-tracer = get_tracer('app')
+# ===============================================================
+# 6️⃣ Cria tracer manual (para spans customizados)
+# ===============================================================
+tracer = get_tracer("app")
 
-
+# ===============================================================
+# 7️⃣ Lifespan da aplicação
+# ===============================================================
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    logger.info('iniciando app...')
+    logger.info("🚀 Iniciando app... criando tabelas.")
     init_db()
     yield
-    logger.info('Encerrando app...')
-    drop_db()
+    logger.info("🧹 Encerrando app... limpando recursos (opcional).")
+    drop_db()  # pode comentar se não quiser limpar o banco no shutdown
 
-app = FastAPI(title='App Observability', lifespan=lifespan)
+# ===============================================================
+# 8️⃣ Inicializa a aplicação FastAPI
+# ===============================================================
+app = FastAPI(title="App Observability", lifespan=lifespan)
 
-# --- Instrumentação ---
-LoggingInstrumentor().instrument(set_logging_format=True, log_level=logging.INFO)
+# ===============================================================
+# 9️⃣ Instrumentação OpenTelemetry
+# ===============================================================
+LoggingInstrumentor().instrument(set_logging_format=True)
 FastAPIInstrumentor.instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
 
+# ===============================================================
+# 🔟 Registra rotas
+# ===============================================================
 app.include_router(pessoa_routes.router)
 
-
-# Comando para iniciar
-# docker compose up -d
-# opentelemetry-bootstrap -a install
-# opentelemetry-instrument venv\Scripts\uvicorn.exe app.app:app --reload --port 8000
+# ===============================================================
+# 1️⃣1️⃣ Rota de teste para forçar logs + spans
+# ===============================================================
+@app.get("/test-trace")
+def test_trace():
+    """
+    Gera um log e um span manual para verificar se o Grafana está recebendo traces.
+    """
+    with tracer.start_as_current_span("manual-test-span"):
+        logger.info("📡 Teste de log OTEL - manual-test-span")
+        return {"status": "trace ok"}
