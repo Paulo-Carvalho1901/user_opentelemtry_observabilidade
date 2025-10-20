@@ -1,0 +1,5 @@
+fastapi==0.118.0
+uvicorn==0.37.0
+sqlalchemy==2.0.43
+opentelemetry-distro==0.58b0
+opentelemetry-exporter-otlp==1.37.0
