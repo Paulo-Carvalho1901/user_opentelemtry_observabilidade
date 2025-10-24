@@ -1,42 +1,44 @@
 """
-app/database.py
-Configuração do SQLAlchemy (engine, SessionLocal, Base) e helpers para criar/dropar tabelas.
+app/database_refatorado.py
+Configuração do SQLAlchemy e helpers de inicialização.
 """
 
-import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-logger = logging.getLogger(__name__)
-
-# Use caminho relativo para garantir arquivo no diretório do projeto.
+# ---------------------------------------------------------------
+# Configuração do banco de dados
+# ---------------------------------------------------------------
 DATABASE_URL = "sqlite:///./app.db"
 
-# Engine com check_same_thread para SQLite em multithread (uvicorn)
+# O parâmetro check_same_thread é necessário apenas para SQLite + FastAPI
 engine = create_engine(
-    DATABASE_URL, echo=True, connect_args={"check_same_thread": False}
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    echo=False  # defina True se quiser logs SQL no console (modo dev)
 )
 
-# Criar SessionLocal corretamente (corrigido autocommit typo)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base declarativa (clássica) para modelos
 Base = declarative_base()
 
+# ---------------------------------------------------------------
+# Inicialização e limpeza do banco
+# ---------------------------------------------------------------
 def init_db():
-    """Cria as tabelas no banco (chama models para registrá-las)."""
-    from . import models  # importa os modelos para registrar metadados
-    logger.info("Criando tabelas...")
+    """Cria todas as tabelas do banco de dados."""
+    from . import models
     Base.metadata.create_all(bind=engine)
 
 def drop_db():
-    """Remove todas as tabelas (útil para testes locais)."""
+    """Remove todas as tabelas do banco de dados."""
     from . import models
-    logger.info("Removendo tabelas...")
     Base.metadata.drop_all(bind=engine)
 
-# Dependência para injeção nas rotas FastAPI
+# ---------------------------------------------------------------
+# Dependência para FastAPI
+# ---------------------------------------------------------------
 def get_db():
+    """Cria e fecha a sessão do banco de dados automaticamente."""
     db = SessionLocal()
     try:
         yield db
