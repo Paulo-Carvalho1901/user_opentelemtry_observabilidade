@@ -82,6 +82,24 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s - trace_id=%(otelTraceID)s span_id=%(otelSpanID)s - %(message)s"
 )
+
+"""
+level=
+Define o nível mínimo de severidade dos logs que serão exibidos. Os níveis, do menos ao mais severo, são:
+DEBUG: informações detalhadas para depuração
+INFO: informações gerais sobre o funcionamento da aplicação
+WARNING: algo inesperado, mas não impede o funcionamento
+ERROR: erro que afeta uma funcionalidade
+CRITICAL: erro grave que pode derrubar a aplicação
+
+format="..."
+Define o formato da mensagem de log. Os campos entre %() são substituídos por valores reais. Vamos quebrar:
+%(asctime)s: data e hora em que o log foi gerado
+%(levelname)s: nível do log (INFO, ERROR, etc.)
+%(otelTraceID)s: ID do trace atual (usado para rastrear requisições)
+%(otelSpanID)s: ID do span atual (evento dentro do trace)
+%(message)s: a mensagem de log propriamente dita
+"""
 root_logger = logging.getLogger()
 root_logger.addHandler(otel_handler)
 
