@@ -25,6 +25,12 @@ from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 # ---------------------------------------------------------------
 # 2. Define recurso da aplicação (service.name etc)
 # ---------------------------------------------------------------
+"""
+Define metadados da aplicação para os dados de observabilidade, como:
+service.name: nome do serviço
+service.namespace: agrupamento lógico
+service.instance.id: identificador da instância (ex: hostname)
+"""
 resource = Resource.create({
     "service.name": os.getenv("OTEL_SERVICE_NAME", "app"),
     "service.namespace": "observability_demo",
@@ -42,6 +48,12 @@ trace_exporter = OTLPSpanExporter(
 trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
 trace.set_tracer_provider(trace_provider)
 
+"""
+TracerProvider: gerencia os spans (eventos de rastreamento)
+OTLPSpanExporter: exporta os dados via protocolo OTLP
+BatchSpanProcessor: envia os dados em lote
+"""
+
 # ---------------------------------------------------------------
 # 4. Configuração de LOGS (envio OTLP → Loki)
 # ---------------------------------------------------------------
@@ -53,6 +65,12 @@ log_exporter = OTLPLogExporter(
 logger_provider = LoggerProvider(resource=resource)
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
 _logs.set_logger_provider(logger_provider)
+
+"""
+Exporta logs via OTLP (por exemplo, para Loki)
+Usa LoggerProvider para gerenciar os logs
+BatchLogRecordProcessor envia logs em lote
+"""
 
 # Handler para redirecionar logs padrão Python → OpenTelemetry
 otel_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
@@ -67,6 +85,11 @@ logging.basicConfig(
 root_logger = logging.getLogger()
 root_logger.addHandler(otel_handler)
 
+"""
+Define o formato dos logs locais e adiciona o handler do OpenTelemetry para que os logs sejam enviados
+também para o sistema de observabilidade.
+"""
+
 logger = logging.getLogger("app")
 tracer = trace.get_tracer("app")
 
@@ -80,6 +103,12 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from .database import init_db, engine
 from .routes import pessoa_routes
 
+"""
+init_db: inicializa o banco de dados
+engine: conexão com o banco
+pessoa_routes: rotas da API relacionadas a "pessoa"
+"""
+
 # ---------------------------------------------------------------
 # 7. Ciclo de vida da aplicação
 # ---------------------------------------------------------------
@@ -88,6 +117,12 @@ async def lifespan(_app: FastAPI):
     init_db()
     yield
     logger.info("App encerrado.")
+
+"""
+Define ações para o início e fim da aplicação:
+Inicializa o banco ao iniciar
+Loga quando a aplicação é encerrada
+"""
 
 # ---------------------------------------------------------------
 # 8. Inicializa FastAPI + Telemetria
@@ -99,8 +134,16 @@ LoggingInstrumentor().instrument(set_logging_format=True)
 FastAPIInstrumentor.instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
 
+"""
+Cria a instância do FastAPI e aplica instrumentações automáticas:
+Logging
+FastAPI
+SQLAlchemy (ORM)
+"""
+
 # ---------------------------------------------------------------
 # 9. Rotas
+# Adiciona as rotas definidas no módulo pessoa_routes.
 # ---------------------------------------------------------------
 app.include_router(pessoa_routes.router)
 
