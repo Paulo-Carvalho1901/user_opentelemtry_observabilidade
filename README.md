@@ -176,7 +176,7 @@ pytest -vv
 
 Pull Requests são bem-vindos! ✨
 
-📌 Autor: *Seu nome aqui*
+📌 Autor: *Paulo Carvalho*
 📌 Projeto demonstrativo de observabilidade
 
 ---
