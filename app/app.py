@@ -1,222 +1,46 @@
-"""
-app/app.py
-Aplicação FastAPI com observabilidade via OpenTelemetry.
-"""
-
-import os
 import logging
 from fastapi import FastAPI
-from dotenv import load_dotenv
+from .database import init_db, engine
+from .routes import rotas_pessoas
+from .telemetry import setup_telemetry
 
 # ---------------------------------------------------------------
-# 1. Configura ambiente e recursos
+# 1. Inicializa a telemetria
 # ---------------------------------------------------------------
-load_dotenv(dotenv_path="./.env")
-
-from opentelemetry import trace, _logs
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+setup_telemetry()
 
 # ---------------------------------------------------------------
-# 2. Define recurso da aplicação (service.name etc)
+# 2. Ciclo de vida da aplicação
 # ---------------------------------------------------------------
-"""
-Define metadados da aplicação para os dados de observabilidade, como:
-service.name: nome do serviço
-service.namespace: agrupamento lógico
-service.instance.id: identificador da instância (ex: hostname)
-"""
-resource = Resource.create({
-    "service.name": os.getenv("OTEL_SERVICE_NAME", "app"),
-    "service.namespace": "observability_demo",
-    "service.instance.id": os.getenv("HOSTNAME", "local"),
-})
+async def lifespan(_app: FastAPI):
+    logging.getLogger("app").info("Iniciando app e criando tabelas.")
+    init_db()
+    yield
+    logging.getLogger("app").info("App encerrado.")
 
 # ---------------------------------------------------------------
-# 3. Configuração de TRACES
+# 3. Inicializa FastAPI + Instrumentações
 # ---------------------------------------------------------------
-trace_provider = TracerProvider(resource=resource)
-trace_exporter = OTLPSpanExporter(
-    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "host.docker.internal:4317"),
-    insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
-)
-trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
-trace.set_tracer_provider(trace_provider)
+app = FastAPI(title="App Observability", lifespan=lifespan)
 
-"""
-TracerProvider: gerencia os spans (eventos de rastreamento)
-OTLPSpanExporter: exporta os dados via protocolo OTLP
-BatchSpanProcessor: envia os dados em lote
-"""
-
-# ---------------------------------------------------------------
-# 4. Configuração de LOGS (envio OTLP → Loki)
-# ---------------------------------------------------------------
-log_exporter = OTLPLogExporter(
-    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "host.docker.internal:4317"),
-    insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
-)
-
-logger_provider = LoggerProvider(resource=resource)
-logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
-_logs.set_logger_provider(logger_provider)
-
-"""
-Exporta logs via OTLP (por exemplo, para Loki)
-Usa LoggerProvider para gerenciar os logs
-BatchLogRecordProcessor envia logs em lote
-"""
-
-# ---------------------------------------------------------------
-# Metricas personalizadas
-# ---------------------------------------------------------------
-
-from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-
-
-# Configuração do exportador de métricas
-metric_exporter = OTLPMetricExporter(
-    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "host.docker.internal:4317"),
-    insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
-)
-
-metric_reader = PeriodicExportingMetricReader(metric_exporter)
-meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-metrics.set_meter_provider(meter_provider)
-meter = metrics.get_meter('app')
-
-# Métrica contador usuário criado
-users_created_counter = meter.create_counter(
-    name='users_created',
-    description='Número de usuário criados',
-    unit='1'
-)
-
-
-# Métrica Gauge: número de usuários ativos
-usuarios_ativos_gauge = meter.create_observable_gauge(
-    name="usuarios_ativos",
-    description="Número atual de usuários ativos no sistema",
-    unit="1",
-    callbacks=[
-        lambda options: [metrics.Observation(get_usuarios_ativos(), {})]
-    ]
-)
-
-# Função para calcular usuários ativos
-def get_usuarios_ativos():
-    from .database import SessionLocal
-    from .models import Pessoa
-    db = SessionLocal()
-    try:
-        return db.query(Pessoa).filter(Pessoa.activo == True).count()
-    finally:
-        db.close()
-
-# Handler para redirecionar logs padrão Python → OpenTelemetry
-otel_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
-
-# ---------------------------------------------------------------
-# 5. Configuração de logging local + integração OTEL
-# ---------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s - trace_id=%(otelTraceID)s span_id=%(otelSpanID)s - %(message)s"
-)
-
-"""
-level=
-Define o nível mínimo de severidade dos logs que serão exibidos. Os níveis, do menos ao mais severo, são:
-DEBUG: informações detalhadas para depuração
-INFO: informações gerais sobre o funcionamento da aplicação
-WARNING: algo inesperado, mas não impede o funcionamento
-ERROR: erro que afeta uma funcionalidade
-CRITICAL: erro grave que pode derrubar a aplicação
-
-format="..."
-Define o formato da mensagem de log. Os campos entre %() são substituídos por valores reais. Vamos quebrar:
-%(asctime)s: data e hora em que o log foi gerado
-%(levelname)s: nível do log (INFO, ERROR, etc.)
-%(otelTraceID)s: ID do trace atual (usado para rastrear requisições)
-%(otelSpanID)s: ID do span atual (evento dentro do trace)
-%(message)s: a mensagem de log propriamente dita
-"""
-root_logger = logging.getLogger()
-root_logger.addHandler(otel_handler)
-
-"""
-Define o formato dos logs locais e adiciona o handler do OpenTelemetry para que os logs sejam enviados
-também para o sistema de observabilidade.
-"""
-
-logger = logging.getLogger("app")
-tracer = trace.get_tracer("app")
-
-# ---------------------------------------------------------------
-# 6. Imports locais e instrumentações
-# ---------------------------------------------------------------
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
-from .database import init_db, engine
-from .routes import pessoa_routes
-
-"""
-init_db: inicializa o banco de dados
-engine: conexão com o banco
-pessoa_routes: rotas da API relacionadas a "pessoa"
-"""
-
-# ---------------------------------------------------------------
-# 7. Ciclo de vida da aplicação
-# ---------------------------------------------------------------
-async def lifespan(_app: FastAPI):
-    logger.info("Iniciando app e criando tabelas.")
-    init_db()
-    yield
-    logger.info("App encerrado.")
-
-"""
-Define ações para o início e fim da aplicação:
-Inicializa o banco ao iniciar
-Loga quando a aplicação é encerrada
-"""
-
-# ---------------------------------------------------------------
-# 8. Inicializa FastAPI + Telemetria
-# ---------------------------------------------------------------
-app = FastAPI(title="App Observability", lifespan=lifespan)
-
-# Instrumentações automáticas
-LoggingInstrumentor().instrument(set_logging_format=True)
 FastAPIInstrumentor.instrument_app(app)
+LoggingInstrumentor().instrument(set_logging_format=True)
 SQLAlchemyInstrumentor().instrument(engine=engine)
 
-"""
-Cria a instância do FastAPI e aplica instrumentações automáticas:
-Logging
-FastAPI
-SQLAlchemy (ORM)
-"""
+# ---------------------------------------------------------------
+# 4. Rotas
+# ---------------------------------------------------------------
+app.include_router(rotas_pessoas.router)
 
 # ---------------------------------------------------------------
-# 9. Rotas
-# Adiciona as rotas definidas no módulo pessoa_routes.
+# 5. Rota de teste
 # ---------------------------------------------------------------
-app.include_router(pessoa_routes.router)
+from .telemetry import tracer, logger
 
-# ---------------------------------------------------------------
-# 10. Rota de teste para verificação de traces e logs
-# ---------------------------------------------------------------
 @app.get("/test-trace")
 def test_trace():
     with tracer.start_as_current_span("manual-test-span"):
@@ -224,14 +48,8 @@ def test_trace():
         return {"status": "trace ok"}
 
 # ---------------------------------------------------------------
-# 11. Execução direta (modo desenvolvimento)
+# 6. Execução direta
 # ---------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("app.app:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
