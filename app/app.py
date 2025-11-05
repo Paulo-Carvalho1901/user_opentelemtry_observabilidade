@@ -72,6 +72,55 @@ Usa LoggerProvider para gerenciar os logs
 BatchLogRecordProcessor envia logs em lote
 """
 
+# ---------------------------------------------------------------
+# Metricas personalizadas
+# ---------------------------------------------------------------
+
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+
+
+# Configuração do exportador de métricas
+metric_exporter = OTLPMetricExporter(
+    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "host.docker.internal:4317"),
+    insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
+)
+
+metric_reader = PeriodicExportingMetricReader(metric_exporter)
+meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+metrics.set_meter_provider(meter_provider)
+meter = metrics.get_meter('app')
+
+# Métrica contador usuário criado
+users_created_counter = meter.create_counter(
+    name='users_created',
+    description='Número de usuário criados',
+    unit='1'
+)
+
+
+# Métrica Gauge: número de usuários ativos
+usuarios_ativos_gauge = meter.create_observable_gauge(
+    name="usuarios_ativos",
+    description="Número atual de usuários ativos no sistema",
+    unit="1",
+    callbacks=[
+        lambda options: [metrics.Observation(get_usuarios_ativos(), {})]
+    ]
+)
+
+# Função para calcular usuários ativos
+def get_usuarios_ativos():
+    from .database import SessionLocal
+    from .models import Pessoa
+    db = SessionLocal()
+    try:
+        return db.query(Pessoa).filter(Pessoa.activo == True).count()
+    finally:
+        db.close()
+
 # Handler para redirecionar logs padrão Python → OpenTelemetry
 otel_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
 
