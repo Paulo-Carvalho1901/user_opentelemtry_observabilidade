@@ -24,5 +24,5 @@ class PessoaLoadTest(HttpUser):
             if res.status_code not in (200, 201):
                 res.failure(f"Erro: {res.status_code} - {res.text}")
 
-
+# Inicia teste de carga
 # locust -f locustfile.py --host http://localhost:8000
