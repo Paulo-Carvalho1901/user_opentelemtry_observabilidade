@@ -3,6 +3,7 @@ app/routes/rotas_pessoas.py
 Rotas relacionadas a operações de CRUD de Pessoa.
 """
 
+from ..app import users_created_counter
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from .. import crud, schemas
@@ -21,7 +22,12 @@ tracer = get_tracer("pessoas")
 def create_user(pessoa: schemas.PessoaSchemaIn, db: Session = Depends(get_db)):
     """Cria um novo usuário."""
     try:
-        return crud.create_user(db, pessoa)
+        novo_usuario = crud.create_user(db, pessoa)
+
+        # ✅ Incrementa a métrica personalizada
+        users_created_counter.add(1, attributes={"rota": "/pessoas/", "cidade": pessoa.cidade})
+
+        return novo_usuario
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
